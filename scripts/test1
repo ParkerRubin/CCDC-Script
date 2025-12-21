@@ -1,0 +1,22 @@
+# 01_fw_backup_and_logging.ps1
+# SAFE: backs up current firewall + enables useful logging
+
+$stamp = Get-Date -Format "yyyyMMdd_HHmmss"
+$backupDir = "C:\CCDC\Firewall"
+New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
+
+# Backup (works on most Windows)
+netsh advfirewall export "$backupDir\fw_$stamp.wfw"
+
+# Enable logging (PowerShell method)
+$logPath = "$backupDir\pfirewall_$stamp.log"
+
+Set-NetFirewallProfile -Profile Domain,Private,Public `
+  -LogAllowed True `
+  -LogBlocked True `
+  -LogIgnored False `
+  -LogFileName $logPath `
+  -LogMaxSizeKilobytes 32768 | Out-Null
+
+Write-Host "[OK] Firewall backed up to: $backupDir"
+Write-Host "[OK] Logging enabled: $logPath"
