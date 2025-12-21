@@ -1,1 +1,46 @@
+# 10_accounts_and_services.ps1
+# Read-only snapshot: local users, local admins, running services (SAFE)
 
+$stamp = Get-Date -Format "yyyyMMdd_HHmmss"
+$base  = "C:\ProgramData\BlueTeam"
+$logd  = Join-Path $base "logs"
+New-Item -ItemType Directory -Force -Path $logd | Out-Null
+$log   = Join-Path $logd "accounts_services_$stamp.txt"
+
+Start-Transcript -Path $log | Out-Null
+Write-Host "=== ACCOUNTS + SERVICES SNAPSHOT ===`n"
+
+# Local users
+Write-Host "[Local Users]"
+try {
+    Get-LocalUser |
+      Select Name, Enabled, LastLogon, PasswordLastSet |
+      Sort Name | Format-Table -AutoSize
+} catch {
+    Write-Host "Get-LocalUser not available"
+}
+
+Write-Host ""
+
+# Local Administrators
+Write-Host "[Local Administrators]"
+try {
+    Get-LocalGroupMember -Group "Administrators" |
+      Select Name, ObjectClass, PrincipalSource |
+      Format-Table -AutoSize
+} catch {
+    Write-Host "Get-LocalGroupMember not available"
+}
+
+Write-Host ""
+
+# Running services (with paths)
+Write-Host "[Running Services]"
+Get-CimInstance Win32_Service |
+  Where-Object { $_.State -eq "Running" } |
+  Select Name, DisplayName, StartMode, State, PathName |
+  Sort Name | Format-Table -AutoSize
+
+Write-Host "`n=== SNAPSHOT COMPLETE ==="
+Stop-Transcript | Out-Null
+Write-Host "Log saved to $log"
