@@ -1,5 +1,8 @@
 # CCDC-Script
 
+Change local administrator password.
+
+
 Install Git package:
 
 winget install --id Git.Git -e --source winget
@@ -27,3 +30,7 @@ RUN Git Files:
 And etc to run additional files.
 
 Order: Snapshots → Triage → Tools → Firewall → Watch
+___________________________
+Now that backups are created, triage displays vulnerabiltiies and shit, manual tools are installed (download 64bit ones) and firewall is set, and watch list is displaying correctly.
+
+Monitor processes, run watch every hour or so. 
