@@ -16,7 +16,9 @@ ______________
 **Git Clone:**
 
 (place yourself in base directory)
-cd ~
+**cd ~
+or
+cd C:/**
 
 git clone <repository_url>
 ex. **git clone https://github.com/ParkerRubin/CCDC-Script.git** 
