@@ -48,6 +48,8 @@ Roll back firewall rules thats it.
 _________
 **Users/Accounts:**
 
+**get-localuser**
+
 Guest Accounts:
 
 Disable-LocalUser -Name "Guest"
