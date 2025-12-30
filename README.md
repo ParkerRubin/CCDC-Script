@@ -5,6 +5,13 @@ _____________
 winget install --id Git.Git -e --source winget
 VERIFY
 git --version
+_____________
+Wifi is down, Git is not accessible, try SSH through PuTTy.
+
+Putty needs Ip/Host name.
+Run: ipconfig 
+
+Proceed with Git Clone.
 ______________
 **Git Clone:**
 
