@@ -32,10 +32,11 @@ run ls for names
 
 Order: Snapshots → Triage → Tools → Firewall → Watch
 ___________________________
-Now that backups are created, triage displays vulnerabiltiies and shit, manual tools are installed (download 64bit ones) and firewall is set, and watch list is displaying correctly.
 
-Monitor processes, run watch every hour or so. 
-
+For snapshots, creates files with current proceeses, users, etc.
+To rollback firewall             
+**netsh advfirewall import "C:\CCDC\Backups\YYYYMMDD_HHMMSS\firewall.wfw"**
+Time stamps are provided in file directory
 _________
 Accounts:
 
@@ -54,3 +55,4 @@ _________
 
 Password Change:
 Set-LocalUser -Name "username" -Password (Read-Host -AsSecureString)
+_________
