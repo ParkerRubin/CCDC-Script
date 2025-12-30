@@ -69,3 +69,23 @@ Password Change:
 Set-LocalUser -Name "username" -Password (Read-Host -AsSecureString)
 (invisible box to type password into)
 _________
+**Ports:**
+
+Common:
+80   → HTTP (web)
+443  → HTTPS (secure web)
+3389 → RDP (Windows remote desktop)
+22   → SSH (Linux / networking)
+53   → DNS
+25   → SMTP (mail)
+445  → SMB (Windows file sharing)
+135  → RPC (Windows core service)
+
+Uncommon:
+4444  → common backdoor / reverse shell
+1337  → meme port, often malicious
+6666/6667 → botnets / IRC C2
+8080 → web proxy / alt HTTP (can be legit OR bad)
+9001–9005 → malware sometimes
+5000–6000 → suspicious if public-facing
+__________
