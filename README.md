@@ -1,39 +1,34 @@
 # CCDC-Script
 
-Change local administrator password.
-
-
-Install Git package:
+**Install Git package:**
 
 winget install --id Git.Git -e --source winget
 VERIFY
 git --version
 ______________
-Git Clone:
+**Git Clone:**
 
-(place yourself in regular directory)
+(place yourself in base directory)
 cd ~
 
 git clone <repository_url>
-ex. git clone https://github.com/ParkerRubin/CCDC-Script.git
+ex. **git clone https://github.com/ParkerRubin/CCDC-Script.git** 
 
 THEN cd <repo name>
-ex. cd CCDC-Script
-
-RUN ls (see inside file)
+ex. **cd CCDC-Script**
 
 AFTER cd <sub folder>
-ex. cd scripts
-RUN ls (see inside file)
+ex. **cd scripts**
+______________
+**RUN Git Script Files:**
 
-RUN Git Files:
+First: **Set-ExecutionPolicy -Scope Process Bypass**
 
-./tools.ps1
-./triage.ps1
-And etc to run additional files.
+Next,
 
-IF execution bypass needed, run
-Set-ExecutionPolicy -Scope Process Bypass
+./(filename).ps1
+ex. ./tools.ps1
+run ls for names
 
 Order: Snapshots → Triage → Tools → Firewall → Watch
 ___________________________
