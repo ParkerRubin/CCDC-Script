@@ -1,5 +1,5 @@
 # CCDC-Script
-
+_____________
 **Install Git package:**
 
 winget install --id Git.Git -e --source winget
@@ -19,6 +19,7 @@ ex. **cd CCDC-Script**
 
 AFTER cd <sub folder>
 ex. **cd scripts**
+run ls for script names
 ______________
 **RUN Git Script Files:**
 
@@ -28,31 +29,32 @@ Next,
 
 ./(filename).ps1
 ex. ./tools.ps1
-run ls for names
 
 Order: Snapshots → Triage → Tools → Firewall → Watch
 ___________________________
+**Snapshots**   ./snapshots.ps1     
 
-For snapshots, creates files with current proceeses, users, etc.
-To rollback firewall             
 **netsh advfirewall import "C:\CCDC\Backups\YYYYMMDD_HHMMSS\firewall.wfw"**
 Time stamps are provided in file directory
-_________
-Accounts:
 
-Guest:
+Roll back firewall rules thats it.
+_________
+**Users/Accounts:**
+
+Guest Accounts:
 
 Disable-LocalUser -Name "Guest"
-Verify:
+   To Verify:
 Get-LocalUser Guest
 
-Admin:
+Admin Accounts:
 
 Disable-LocalUser -Name "Administrator"
-Verify:
+   Verify:
 Get-LocalUser Administrator
 _________
 
 Password Change:
 Set-LocalUser -Name "username" -Password (Read-Host -AsSecureString)
+(invisible box to type password into)
 _________
