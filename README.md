@@ -32,6 +32,9 @@ RUN Git Files:
 ./triage.ps1
 And etc to run additional files.
 
+IF execution bypass needed, run
+Set-ExecutionPolicy -Scope Process Bypass
+
 Order: Snapshots → Triage → Tools → Firewall → Watch
 ___________________________
 Now that backups are created, triage displays vulnerabiltiies and shit, manual tools are installed (download 64bit ones) and firewall is set, and watch list is displaying correctly.
