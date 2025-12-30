@@ -11,6 +11,9 @@ git --version
 ______________
 Git Clone:
 
+(place yourself in regular directory)
+cd ~
+
 git clone <repository_url>
 ex. git clone https://github.com/ParkerRubin/CCDC-Script.git
 
