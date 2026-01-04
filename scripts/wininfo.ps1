@@ -1,91 +1,120 @@
-# Network_Inventory_Windows.ps1
-# Saves inventory to a folder in the CURRENT working directory
+# wininfo.ps1
+# Clean inventory summary: Hostname, OS, IPs, and "Service: ports" derived from listening ports.
 
 $hostname  = $env:COMPUTERNAME
 $timestamp = Get-Date -Format "yyyy-MM-dd_HHmmss"
 
-# Folder + file (relative path = wherever you cd'd into)
-$folderName = "Inventory_${hostname}_${timestamp}"
-$outDir     = Join-Path (Get-Location) $folderName
-$outFile    = Join-Path $outDir "inventory.txt"
-
-# Create folder
+$outDir  = Join-Path (Get-Location) "Inventory_${hostname}_${timestamp}"
+$outFile = Join-Path $outDir "inventory.txt"
 New-Item -ItemType Directory -Path $outDir -Force | Out-Null
 
-function Write-Section {
-    param($Title)
-    "`n==== $Title ====`n" | Out-File -FilePath $outFile -Append -Encoding utf8
-}
+function Add($line="") { $line | Out-File -FilePath $outFile -Append -Encoding utf8 }
 
-# Header
-"Network Inventory Report" | Out-File $outFile -Encoding utf8
-("Generated: {0}" -f (Get-Date)) | Out-File $outFile -Append
-("Host:      {0}" -f $hostname) | Out-File $outFile -Append
+# --- Header / Host / OS / IPs ---
+Add "Inventory Report"
+Add ("Generated: {0}" -f (Get-Date))
+Add ""
 
-# Host info
-Write-Section "Host Identification"
 $cs = Get-CimInstance Win32_ComputerSystem
-("Hostname: {0}" -f $hostname) | Out-File $outFile -Append
-("Domain:   {0}" -f $cs.Domain) | Out-File $outFile -Append
-("Role:     {0}" -f $(if ($cs.PartOfDomain) {"Domain-Joined"} else {"Workgroup"})) | Out-File $outFile -Append
-
-# OS
-Write-Section "Operating System"
 $os = Get-CimInstance Win32_OperatingSystem
-("OS:      {0}" -f $os.Caption) | Out-File $outFile -Append
-("Version: {0}" -f $os.Version) | Out-File $outFile -Append
-("Build:   {0}" -f $os.BuildNumber) | Out-File $outFile -Append
-("Boot:    {0}" -f $os.LastBootUpTime) | Out-File $outFile -Append
 
-# IPs
-Write-Section "IP Addresses (IPv4)"
-Get-NetIPAddress -AddressFamily IPv4 |
+Add "Hostnames:"
+Add ("  {0}" -f $hostname)
+Add ""
+
+Add "Operating System:"
+Add ("  {0} (Version {1}, Build {2})" -f $os.Caption, $os.Version, $os.BuildNumber)
+Add ""
+
+Add "IP Addresses (IPv4):"
+$ips = Get-NetIPAddress -AddressFamily IPv4 |
     Where-Object { $_.IPAddress -notlike "169.254*" -and $_.IPAddress -ne "127.0.0.1" } |
-    Sort-Object InterfaceAlias |
-    ForEach-Object {
-        ("{0,-25} {1,-15}" -f $_.InterfaceAlias, $_.IPAddress)
-    } | Out-File $outFile -Append -Encoding utf8
+    Sort-Object InterfaceAlias,IPAddress
 
-# Services
-Write-Section "Running Services"
-Get-Service |
-    Where-Object Status -eq "Running" |
-    Sort-Object DisplayName |
-    ForEach-Object {
-        ("{0,-55} ({1})" -f $_.DisplayName, $_.Name)
-    } | Out-File $outFile -Append -Encoding utf8
-
-# Ports
-Write-Section "Listening Ports (TCP/UDP)"
-$procs = Get-Process | Select-Object Id, ProcessName
-
-"TCP:" | Out-File $outFile -Append
-Get-NetTCPConnection -State Listen |
-    ForEach-Object {
-        $p = ($procs | Where-Object Id -eq $_.OwningProcess).ProcessName
-        if (-not $p) { $p = "UNKNOWN" }
-        ("{0,6}  PID:{1,-6}  {2}" -f $_.LocalPort, $_.OwningProcess, $p)
-    } | Sort-Object | Out-File $outFile -Append -Encoding utf8
-
-"`nUDP:" | Out-File $outFile -Append
-Get-NetUDPEndpoint |
-    ForEach-Object {
-        $p = ($procs | Where-Object Id -eq $_.OwningProcess).ProcessName
-        if (-not $p) { $p = "UNKNOWN" }
-        ("{0,6}  PID:{1,-6}  {2}" -f $_.LocalPort, $_.OwningProcess, $p)
-    } | Sort-Object | Out-File $outFile -Append -Encoding utf8
-
-# Containers
-Write-Section "Containers (Docker)"
-if (Get-Command docker -ErrorAction SilentlyContinue) {
-    docker ps -a --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}" |
-        Out-File $outFile -Append -Encoding utf8
+if ($ips) {
+    foreach ($ip in $ips) { Add ("  {0}: {1}" -f $ip.InterfaceAlias, $ip.IPAddress) }
 } else {
-    "Docker not installed." | Out-File $outFile -Append
+    Add "  (none found)"
+}
+Add ""
+
+# --- Collect listening ports ---
+$tcpPorts = @(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty LocalPort)
+$udpPorts = @(Get-NetUDPEndpoint -ErrorAction SilentlyContinue | Select-Object -ExpandProperty LocalPort)
+
+$listen = @()
+foreach ($p in $tcpPorts) { $listen += [pscustomobject]@{ Proto="TCP"; Port=[int]$p } }
+foreach ($p in $udpPorts) { $listen += [pscustomobject]@{ Proto="UDP"; Port=[int]$p } }
+
+$listen = $listen | Sort-Object Proto,Port -Unique
+
+# --- Port → Service mapping (you can add/remove easily) ---
+$portMap = @{
+    22   = "Remote (SSH)"
+    53   = "DNS"
+    80   = "Web (HTTP)"
+    88   = "Kerberos"
+    111  = "RPCBind/NFS (Linux-y)"
+    123  = "NTP"
+    135  = "RPC Endpoint Mapper"
+    137  = "NetBIOS Name"
+    138  = "NetBIOS Datagram"
+    139  = "NetBIOS Session"
+    389  = "LDAP"
+    443  = "Web (HTTPS)"
+    445  = "SMB"
+    464  = "Kerberos Password"
+    587  = "SMTP (Submission)"
+    636  = "LDAPS"
+    1433 = "MS SQL"
+    1521 = "Oracle DB"
+    2049 = "NFS"
+    3306 = "MySQL/MariaDB"
+    3389 = "Remote Desktop (RDP)"
+    5432 = "PostgreSQL"
+    5985 = "WinRM (HTTP)"
+    5986 = "WinRM (HTTPS)"
+    8000 = "Web (Alt/Dev)"
+    8080 = "Web (HTTP-alt)"
+    8443 = "Web (HTTPS-alt)"
 }
 
-Write-Section "Complete"
-("Output directory: {0}" -f $outDir) | Out-File $outFile -Append
+# Group listening ports into services
+$servicesFound = @{}
 
-Write-Host "Inventory saved to:"
-Write-Host "  $outDir"
+foreach ($row in $listen) {
+    $p = $row.Port
+    if ($portMap.ContainsKey($p)) {
+        $svc = $portMap[$p]
+        if (-not $servicesFound.ContainsKey($svc)) { $servicesFound[$svc] = @() }
+        $servicesFound[$svc] += ("{0}/{1}" -f $p, $row.Proto.ToLower())
+    }
+}
+
+# --- Output summary like your example ---
+Add "Services / Required Ports (listening on this host):"
+
+if ($servicesFound.Keys.Count -eq 0) {
+    Add "  (No mapped services detected from listening ports)"
+} else {
+    foreach ($svc in ($servicesFound.Keys | Sort-Object)) {
+        $ports = ($servicesFound[$svc] | Sort-Object -Unique) -join ", "
+        Add ("  {0}: {1}" -f $svc, $ports)
+    }
+}
+
+# Optional: also include unknown listening ports (so you don’t miss stuff)
+Add ""
+Add "Other Listening Ports (unmapped):"
+$unmapped = $listen | Where-Object { -not $portMap.ContainsKey($_.Port) }
+if ($unmapped) {
+    foreach ($u in $unmapped) {
+        Add ("  {0}/{1}" -f $u.Port, $u.Proto.ToLower())
+    }
+} else {
+    Add "  (none)"
+}
+
+Add ""
+Add ("Saved to: {0}" -f $outFile)
+Write-Host "Saved: $outFile"
