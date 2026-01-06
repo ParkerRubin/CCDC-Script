@@ -89,3 +89,16 @@ Uncommon:
 9001–9005 → malware sometimes
 5000–6000 → suspicious if public-facing
 __________
+**Choco Install**
+
+Set-ExecutionPolicy Bypass -Scope Process -Force;
+[System.Net.ServicePointManager]::SecurityProtocol = `
+[System.Net.ServicePointManager]::SecurityProtocol -bor 3072;
+iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+
+choco --version
+
+choco install git -y
+
+
+
