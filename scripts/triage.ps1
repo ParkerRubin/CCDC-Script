@@ -1,7 +1,3 @@
-# 01_triage.ps1
-# WRCCDC-style triage: READ-ONLY collection (safe baseline)
-# Writes artifacts to C:\IR\TRIAGE\<HOST>_<timestamp>\
-
 $ErrorActionPreference = "SilentlyContinue"
 
 $stamp = Get-Date -Format "yyyy-MM-dd_HHmm"
@@ -25,7 +21,6 @@ function Try-Run($name, $scriptBlock) {
   }
 }
 
-# --- System / Network ---
 Try-Run "system.txt" {
   $os = Get-CimInstance Win32_OperatingSystem
   $cs = Get-CimInstance Win32_ComputerSystem
@@ -61,7 +56,6 @@ Try-Run "shares.txt" {
   (net share) | Out-String
 }
 
-# --- Users / Admins ---
 Try-Run "users_admins.txt" {
   $localUsers = (Get-LocalUser | Select-Object Name, Enabled, LastLogon | Format-Table -AutoSize | Out-String)
   $admins = (Get-LocalGroupMember -Group "Administrators" | Select-Object Name, ObjectClass | Format-Table -AutoSize | Out-String)
@@ -75,7 +69,6 @@ $admins
 "@
 }
 
-# --- Processes / Services / Tasks ---
 try {
   Get-Process | Sort-Object CPU -Descending |
     Select-Object -First 200 Name, Id, CPU, WorkingSet64, Path |
@@ -100,13 +93,11 @@ try {
   Out-Text "scheduled_tasks.csv" "[error exporting scheduled tasks]"
 }
 
-# --- Recent Security events (best-effort; depends on log settings) ---
 Try-Run "recent_security_events.txt" {
   $events = Get-WinEvent -FilterHashtable @{ LogName='Security'; Id=4624,4625,4720,4722,4723,4724,4725,4726,4732,4733 } -MaxEvents 200
   $events | Select-Object TimeCreated, Id, ProviderName, Message | Format-List | Out-String
 }
-
-# --- Summary (quick glance) ---
+  
 Try-Run "summary.txt" {
   $profiles = Get-NetFirewallProfile
   $fw = $profiles | ForEach-Object { "$($_.Name)=$($_.Enabled)" } | Sort-Object
