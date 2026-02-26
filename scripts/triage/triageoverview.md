@@ -1,135 +1,138 @@
-How to Use the Triage Output (Beginner Guide)
+Triage Script User Guide
 
-When you run triage.ps1, it makes a folder like:
+--------------------------------------------------
 
-C:\IR\TRIAGE\COMPUTERNAME_YYYY-MM-DD_HHMM\
+What this script does
 
-Inside are a bunch of .txt files + a few .csv files. Don’t try to read everything. Start with the stuff that gives you the quickest “is this box cooked?” signal.
+Creates a quick incident-response triage bundle in a timestamped folder.
+It collects common system, network, user, process, service, and log data
+so you can review it fast or exfil it for offline analysis.
 
-The 5-minute starting path (do this first)
-1) Open summary.txt first
+Outputs include:
+- system.txt (host/OS/user/IP summary)
+- firewall.txt (firewall profile settings)
+- netstat.txt (netstat -ano output)
+- shares.txt (network shares)
+- users_admins.txt (local users and local admins)
+- processes.txt and processes.csv (top processes by CPU, includes path when available)
+- services.csv (services with path/start info)
+- scheduled_tasks.csv (scheduled tasks)
+- recent_security_events.txt (common security-related event IDs)
+- summary.txt (quick snapshot and suggested next steps)
 
-This is your “dashboard.”
+--------------------------------------------------
 
-Firewall status (Domain/Private/Public enabled or not)
+How to run
 
-Listening TCP ports (what the machine is exposing)
+Run PowerShell as Administrator when possible, then execute:
 
-Local admins list
+    .\triage.ps1
 
-Quick “what to check next” reminders
+If script execution is blocked:
 
-If summary.txt looks normal, the machine is probably not actively on fire.
+    Set-ExecutionPolicy Bypass -Scope Process -Force
 
-2) Check users_admins.txt
+Then rerun the script.
 
-This answers: “Did someone add a weird local admin?”
-Look for:
+--------------------------------------------------
 
-Unknown usernames
+Output location
 
-“Enabled” accounts that shouldn’t exist
+The script writes to:
 
-Admin group members you don’t recognize
+    C:\IR\TRIAGE\COMPUTERNAME_YYYY-MM-dd_HHmm\
 
-Big red flag: random new user + in Administrators.
+Example:
 
-3) Check processes.txt (NOT the CSV)
+    C:\IR\TRIAGE\DESKTOP-1234_2026-02-26_2310\
 
-This is the readable process list.
-Look for:
+--------------------------------------------------
 
-Stuff running out of weird locations: C:\Users\...\AppData\Temp\ or random folders
+What gets collected (and why)
 
-Sketchy names that look like system files but slightly off (svch0st.exe, expl0rer.exe, etc.)
+system.txt
+- Hostname, current user, time, OS version/build, manufacturer/model, BIOS, domain/workgroup, IPv4 addresses
+Use for quick identification of the machine and basic environment.
 
-PowerShell or cmd running when nobody is doing admin work
-
-Quick rule: if the path is in a user profile and it’s not Discord/Zoom/Chrome/etc, look closer.
-
-4) Check netstat.txt
-
-This answers: “Who is this box talking to?”
-Look for:
-
-Lots of outbound connections to random IPs
-
-Weird listening ports you didn’t expect
-
-A connection tied to a suspicious PID (you can match PID to processes.txt)
-
-If you see something listening that shouldn’t be, that’s a “pause and investigate” moment.
-
-5) Check recent_security_events.txt
-
-This is your “did anyone mess with accounts/logins” log snapshot.
-Look for:
-
-Login failures spam (brute force attempts)
-
-New user created
-
-User added to admins
-
-Account enabled/disabled
-
-If you see user creation/admin group changes you didn’t do, treat it as hostile until proven otherwise.
-
-What each file is for (simple)
-
-summary.txt — quick overview, start here
-
-system.txt — machine identity + OS + IPs
-
-firewall.txt — firewall profile status (Domain/Private/Public)
-
-users_admins.txt — local users + who’s in Administrators
-
-processes.txt / processes.csv — running processes (txt = readable, csv = sortable)
-
-services.csv — services (useful for spotting persistence)
-
-scheduled_tasks.csv — scheduled tasks (also persistence)
-
-netstat.txt — network connections + listening ports
-
-shares.txt — shared folders (sometimes attackers open shares)
-
-“What should I worry about?” cheat list
-🚩 Big red flags
-
-Unknown user in Administrators
-
-Tasks/services pointing to weird paths (Temp/AppData/random folder)
-
-Lots of outbound connections to strange IPs
-
-Suspicious processes with no legit path
-
-Security logs showing new users / admin group changes
-
-✅ Usually normal (context matters)
-
-svchost.exe, lsass.exe, explorer.exe
-
-Browser processes (msedge, chrome)
-
-Discord/Zoom/Teams (if people actually use them)
-
-What to do when you spot something weird
-
-Write down the name + path + PID
-
-Search that PID in:
-
-processes.txt
+firewall.txt
+- Firewall profile status and default inbound/outbound behavior
+Use to confirm firewall state and logging settings.
 
 netstat.txt
+- Full netstat -ano output (connections + listening + owning PID)
+Use to spot suspicious listeners and map ports to process IDs.
 
-Check if it shows up as a service/task:
+shares.txt
+- Output of "net share"
+Use to find unexpected shares or exposed paths.
+
+users_admins.txt
+- Local user accounts and members of the local Administrators group
+Use to spot unexpected admin access or rogue accounts.
+
+processes.txt and processes.csv
+- Top 200 processes by CPU, includes PID, CPU, memory, and path (when available)
+Use to spot suspicious processes and where they run from.
 
 services.csv
+- Services with state, start mode, start account, and binary path
+Use to identify persistence or suspicious service binaries (temp paths, weird names).
 
 scheduled_tasks.csv
+- Scheduled task name/path/state/author
+Use to identify persistence via tasks.
 
-If it connects out AND has persistence (task/service), that’s usually not an accident.
+recent_security_events.txt
+- Last 200 Security log events for IDs:
+  4624, 4625 (logons)
+  4720-4726 (user account create/enable/password reset/disable/delete)
+  4732, 4733 (added/removed from local groups)
+Use to quickly review auth activity and account changes.
+
+summary.txt
+- Firewall status, listening TCP ports, local admins, and basic next steps
+Use as a quick overview to start your investigation.
+
+--------------------------------------------------
+
+How to use it during a triage workflow (fast)
+
+1) Open summary.txt
+- Check firewall status
+- Check listening TCP ports
+- Check local admins list
+
+2) If you see a weird port or PID:
+- Use netstat.txt to find the PID (look for LISTENING and the PID column)
+- Use processes.txt or processes.csv to identify the process name and path for that PID
+
+3) Check persistence indicators:
+- Review services.csv for weird service names, unusual StartName, or suspicious PathName
+- Review scheduled_tasks.csv for unfamiliar tasks or odd authors
+
+4) Check account activity:
+- Review users_admins.txt for unexpected admins
+- Review recent_security_events.txt for logon spikes, failed logons, or account creations/changes
+
+--------------------------------------------------
+
+What is suspicious (quick rules)
+
+- A process path running from Temp, AppData, Downloads, Public, or random user folders
+- Unknown process listening on common remote ports (3389, 445, 5985/5986)
+- New or unexpected local admin accounts
+- Services with random names or weird binary paths
+- Scheduled tasks that run from temp paths or obscure scripts
+- Lots of 4625 failures followed by 4624 success (possible brute force then success)
+
+--------------------------------------------------
+
+Notes and limitations
+
+- Running without admin may reduce visibility for some process paths and security log access.
+- processes.csv is best for sorting/filtering quickly.
+- netstat.txt gives PIDs; processes.txt/csv helps map PID to name/path.
+
+--------------------------------------------------
+
+End of guide
