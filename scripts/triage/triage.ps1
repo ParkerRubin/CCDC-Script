@@ -70,10 +70,21 @@ $admins
 }
 
 try {
-  Get-Process | Sort-Object CPU -Descending |
-    Select-Object -First 200 Name, Id, CPU, WorkingSet64, Path |
-    Export-Csv (Join-Path $outDir "processes.csv") -NoTypeInformation -Force
+  $procs = Get-Process -ErrorAction SilentlyContinue |
+    Sort-Object CPU -Descending |
+    Select-Object -First 200 Name, Id, CPU,
+      @{Name="WorkingSetMB";Expression={[math]::Round($_.WorkingSet64/1MB,1)}},
+      @{Name="Path";Expression={$_.Path}}
+
+  # machine-friendly
+  $procs | Export-Csv (Join-Path $outDir "processes.csv") -NoTypeInformation -Force
+
+  # human-friendly
+  $procs | Format-Table -AutoSize | Out-String -Width 260 |
+    Out-File (Join-Path $outDir "processes.txt") -Encoding UTF8 -Force
+
 } catch {
+  Out-Text "processes.txt" "[error exporting processes]"
   Out-Text "processes.csv" "[error exporting processes]"
 }
 
