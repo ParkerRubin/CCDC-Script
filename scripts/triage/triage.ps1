@@ -117,4 +117,5 @@ Next steps:
 - Use TCPView/ProcExp for anything that looks sus.
 "@
 }
-Write-Host "Done. Output folder: $outDir
+Write-Host ""
+Write-Host "Done. Output folder: $outDir"
