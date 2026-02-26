@@ -1,106 +1,124 @@
-🧾 Inventory Script — Quick User Guide
+Inventory Script User Guide
+
+--------------------------------------------------
+
 What this script does
 
-Makes a clean snapshot of:
+Creates a snapshot of the system showing:
 
-OS + hostname
+- Hostname and OS version
+- IPv4 network configuration
+- Listening TCP and UDP ports
+- Which process owns each port
+- Services tied to those processes
+- Docker containers (if installed)
 
-IP / network info
+Purpose: identify what services the machine is exposing.
 
-Open listening ports
+--------------------------------------------------
 
-Which process owns each port
+How to run
 
-Services tied to those processes
+Run in the folder containing the script:
 
-Docker containers (if present)
+    .\Inventory.ps1
 
-Basically: “what is this machine exposing right now?”
+Save output somewhere specific:
 
-▶️ How to run
-.\Inventory.ps1
+    .\Inventory.ps1 -OutRoot C:\Temp
 
-Save somewhere specific:
+If script execution is blocked:
 
-.\Inventory.ps1 -OutRoot C:\Temp
+    Set-ExecutionPolicy Bypass -Scope Process -Force
 
-If blocked:
+--------------------------------------------------
 
-Set-ExecutionPolicy Bypass -Scope Process -Force
-📂 Where output goes
+Output location
 
-Creates folder:
+The script creates a folder:
 
-Inventory_PCNAME_DATE
+    Inventory_COMPUTERNAME_TIMESTAMP
 
-Inside:
+Inside that folder:
 
-inventory.txt
-🔎 How to read results (fast)
+    inventory.txt
+
+--------------------------------------------------
+
+How to read the results
+
 Listening Ports (Quick Summary)
 
-Shows common ports like:
+Shows common listening ports such as:
 
-3389 = RDP
+- 3389 (RDP)
+- 445 (SMB)
+- 80 / 443 (web)
+- 5985 / 5986 (WinRM)
 
-445 = SMB
+Use this for a quick view of exposed services.
 
-80/443 = web
-
-5985/5986 = WinRM
-
-👉 Quick “what’s exposed” view
+--------------------------------------------------
 
 Required Ports (mapped)
 
-Only important known ports
-👉 Check if they should exist on this system
+Shows only known important ports.
+
+Check whether these should exist on this system.
+
+--------------------------------------------------
 
 Other Listening Ports
 
-Everything else
-👉 Weird = investigate
+All remaining listening ports not in the known list.
 
-Evidence (grouped by process) ⭐
+Unexpected entries should be investigated.
 
-Most important section
+--------------------------------------------------
 
-Shows:
+Evidence (grouped by process)
 
-Proc: svchost
-Ports: 135, 445
-Svcs: RpcSs, LanmanServer
+Most important section.
 
-👉 Tells you what program owns the port
+Shows which process owns each listening port and related services.
 
-🚩 What’s suspicious
+Example:
 
-Unknown process listening
+    ProcId:1234  Proc:svchost
+      Ports: 135/tcp, 445/tcp
+      Svcs: RpcSs, LanmanServer
 
-Non-Windows process on 445 / 3389 / 5985
+Use this to determine what program is exposing a port.
 
-Random high port listener
+--------------------------------------------------
 
-Ports but no service listed
+What is suspicious
 
-✅ Normal examples
+- Unknown process listening
+- Non-Windows process using 445, 3389, or 5985
+- Random high-numbered listening port
+- Ports listed with no associated service
 
-svchost → 135/445
+--------------------------------------------------
 
-System → 135
+Normal examples
 
-lsass → 389/636 (DC)
+- svchost using 135 or 445
+- System using 135
+- Web server using 80 or 443
+- Domain controller using 389 or 636
 
-IIS / nginx → 80/443
+--------------------------------------------------
 
-🧠 When to use this
+When to use this script
 
-Use when you want:
+Use when you need to identify:
 
-exposed services
+- exposed services
+- attack surface
+- unexpected listeners
+- possible lateral movement paths
 
-attack surface
+--------------------------------------------------
 
-lateral movement paths
-
-unexpected listeners
+End of guide
