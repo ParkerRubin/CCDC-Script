@@ -2,7 +2,6 @@ param(
     [string]$OutRoot = (Get-Location).Path
 )
 
-# ---------------- Basic Info ----------------
 $hostname  = $env:COMPUTERNAME
 $timestamp = Get-Date -Format "yyyy-MM-dd_HHmmss"
 
@@ -14,42 +13,50 @@ function Add([string]$line = "") {
     $line | Out-File -FilePath $outFile -Append -Encoding utf8
 }
 
-$isAdmin = ([Security.Principal.WindowsPrincipal] 
-    [Security.Principal.WindowsIdentity]::GetCurrent()
-).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
+    [Security.Principal.WindowsBuiltInRole]::Administrator
+)
 
 # ---------------- OS + Network ----------------
 $os = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue
 
-$netCfg = Get-NetIPConfiguration -ErrorAction SilentlyContinue |
-    Where-Object { $_.IPv4Address }
+$netCfg = @()
+try {
+    $netCfg = Get-NetIPConfiguration -ErrorAction Stop | Where-Object { $_.IPv4Address }
+} catch { $netCfg = @() }
 
 # ---------------- Listening Ports (single pass) ----------------
-$tcp = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |
-    Select-Object @{n="Proto";e={"tcp"}}, LocalPort, OwningProcess
+$tcp = @()
+$udp = @()
 
-$udp = Get-NetUDPEndpoint -ErrorAction SilentlyContinue |
-    Select-Object @{n="Proto";e={"udp"}}, LocalPort, OwningProcess
+try {
+    $tcp = Get-NetTCPConnection -State Listen -ErrorAction Stop |
+        Select-Object @{n="Proto";e={"tcp"}}, @{n="Port";e={[int]$_.LocalPort}}, @{n="ProcId";e={[int]$_.OwningProcess}}
+} catch { $tcp = @() }
+
+try {
+    $udp = Get-NetUDPEndpoint -ErrorAction Stop |
+        Select-Object @{n="Proto";e={"udp"}}, @{n="Port";e={[int]$_.LocalPort}}, @{n="ProcId";e={[int]$_.OwningProcess}}
+} catch { $udp = @() }
 
 $listen = @($tcp + $udp) |
-    Where-Object { $_.LocalPort } |
-    Sort-Object Proto, LocalPort, OwningProcess -Unique
+    Where-Object { $_.Port -and $_.ProcId -ge 0 } |
+    Sort-Object Proto, Port, ProcId -Unique
 
-# ---------------- Process Map (single lookup) ----------------
+# ---------------- Process Map ----------------
 $procMap = @{}
 Get-Process -ErrorAction SilentlyContinue | ForEach-Object {
-    $procMap[$_.Id] = $_.ProcessName
+    $procMap[[int]$_.Id] = $_.ProcessName
 }
 
-# ---------------- Service Map (single lookup) ----------------
-$svcByPid = @{}
+# ---------------- Service Map (PID -> service names) ----------------
+$svcByProcId = @{}
 Get-CimInstance Win32_Service -ErrorAction SilentlyContinue |
     Where-Object { $_.ProcessId -gt 0 } |
     ForEach-Object {
-        if (-not $svcByPid.ContainsKey($_.ProcessId)) {
-            $svcByPid[$_.ProcessId] = @()
-        }
-        $svcByPid[$_.ProcessId] += $_.Name
+        $procId = [int]$_.ProcessId
+        if (-not $svcByProcId.ContainsKey($procId)) { $svcByProcId[$procId] = @() }
+        $svcByProcId[$procId] += $_.Name
     }
 
 # ---------------- Port Labels ----------------
@@ -75,15 +82,12 @@ Add ("  {0}" -f $hostname)
 Add ""
 
 Add "Operating System:"
-if ($os) {
-    Add ("  {0} (Version {1}, Build {2})" -f $os.Caption, $os.Version, $os.BuildNumber)
-} else {
-    Add "  (Unable to read OS info)"
-}
+if ($os) { Add ("  {0} (Version {1}, Build {2})" -f $os.Caption, $os.Version, $os.BuildNumber) }
+else { Add "  (Unable to read OS info)" }
 Add ""
 
 Add "Network (IPv4):"
-if ($netCfg) {
+if ($netCfg -and $netCfg.Count -gt 0) {
     foreach ($n in $netCfg) {
         $ip  = $n.IPv4Address.IPAddress
         $gw  = $n.IPv4DefaultGateway.NextHop
@@ -91,75 +95,62 @@ if ($netCfg) {
         Add ("  {0}  IP:{1}  GW:{2}  DNS:{3}" -f $n.InterfaceAlias, $ip, $gw, $dns)
     }
 } else {
-    Add "  (none found)"
+    Add "  (none found or unable to query)"
 }
 Add ""
 
-# -------- Quick Summary (no scanning needed) --------
 Add "Listening Ports (Quick Summary):"
-if ($listen.Count -eq 0) {
+if (-not $listen -or $listen.Count -eq 0) {
     Add "  (none)"
 } else {
-    foreach ($p in ($listen | Sort-Object LocalPort,Proto | Select-Object -First 40)) {
-        $label = if ($portMap.ContainsKey($p.LocalPort)) { $portMap[$p.LocalPort] } else { "" }
-        if ($label) {
-            Add ("  {0,5}/{1}  {2}" -f $p.LocalPort, $p.Proto, $label)
-        } else {
-            Add ("  {0,5}/{1}" -f $p.LocalPort, $p.Proto)
-        }
+    foreach ($p in ($listen | Sort-Object Port,Proto | Select-Object -First 40)) {
+        $label = if ($portMap.ContainsKey($p.Port)) { $portMap[$p.Port] } else { "" }
+        if ($label) { Add ("  {0,5}/{1}  {2}" -f $p.Port, $p.Proto, $label) }
+        else { Add ("  {0,5}/{1}" -f $p.Port, $p.Proto) }
     }
 }
 Add ""
 
-# -------- Mapped vs Unmapped --------
-$mapped   = $listen | Where-Object { $portMap.ContainsKey($_.LocalPort) }
-$unmapped = $listen | Where-Object { -not $portMap.ContainsKey($_.LocalPort) }
+$mapped   = $listen | Where-Object { $portMap.ContainsKey($_.Port) }
+$unmapped = $listen | Where-Object { -not $portMap.ContainsKey($_.Port) }
 
 Add "Required Ports (mapped):"
 if ($mapped) {
-    foreach ($m in ($mapped | Sort-Object LocalPort,Proto -Unique)) {
-        Add ("  {0,5}/{1}  -> {2}" -f $m.LocalPort, $m.Proto, $portMap[$m.LocalPort])
+    foreach ($m in ($mapped | Sort-Object Port,Proto -Unique)) {
+        Add ("  {0,5}/{1}  -> {2}" -f $m.Port, $m.Proto, $portMap[$m.Port])
     }
 } else { Add "  (none)" }
 Add ""
 
 Add "Other Listening Ports:"
 if ($unmapped) {
-    foreach ($u in ($unmapped | Sort-Object LocalPort,Proto -Unique)) {
-        Add ("  {0}/{1}" -f $u.LocalPort, $u.Proto)
+    foreach ($u in ($unmapped | Sort-Object Port,Proto -Unique)) {
+        Add ("  {0}/{1}" -f $u.Port, $u.Proto)
     }
 } else { Add "  (none)" }
 Add ""
 
-# -------- Evidence Section --------
-Add "Evidence (Port -> PID -> Process -> Service):"
-foreach ($row in ($listen | Sort-Object LocalPort,Proto,OwningProcess)) {
-
-    $pid   = $row.OwningProcess
-    $proc  = if ($procMap.ContainsKey($pid)) { $procMap[$pid] } else { "UNKNOWN" }
-    $svcs  = if ($svcByPid.ContainsKey($pid)) { ($svcByPid[$pid] -join ",") } else { "" }
+Add "Evidence (Port -> ProcId -> Process -> Service):"
+foreach ($row in ($listen | Sort-Object Port,Proto,ProcId)) {
+    $procId = [int]$row.ProcId
+    $proc   = if ($procMap.ContainsKey($procId)) { $procMap[$procId] } else { "UNKNOWN" }
+    $svcs   = if ($svcByProcId.ContainsKey($procId)) { (($svcByProcId[$procId] | Sort-Object -Unique) -join ",") } else { "" }
 
     if ($svcs) {
-        Add ("  {0,5}/{1,-3}  PID:{2,-6}  Proc:{3,-18}  Svc:{4}" -f `
-            $row.LocalPort, $row.Proto, $pid, $proc, $svcs)
-    }
-    else {
-        Add ("  {0,5}/{1,-3}  PID:{2,-6}  Proc:{3}" -f `
-            $row.LocalPort, $row.Proto, $pid, $proc)
+        Add ("  {0,5}/{1,-3}  ProcId:{2,-6}  Proc:{3,-18}  Svc:{4}" -f $row.Port, $row.Proto, $procId, $proc, $svcs)
+    } else {
+        Add ("  {0,5}/{1,-3}  ProcId:{2,-6}  Proc:{3}" -f $row.Port, $row.Proto, $procId, $proc)
     }
 }
 Add ""
 
-# -------- Docker --------
 Add "Containers:"
 if (Get-Command docker -ErrorAction SilentlyContinue) {
     Add "  Docker detected:"
     try {
         docker ps -a --format '{{.Names}} | {{.Image}} | {{.Status}} | {{.Ports}}' |
             ForEach-Object { Add ("  " + $_) }
-    } catch {
-        Add "  (docker command failed)"
-    }
+    } catch { Add "  (docker command failed)" }
 } else {
     Add "  Docker not installed."
 }
