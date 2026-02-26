@@ -13,6 +13,7 @@ function Add([string]$line = "") {
     $line | Out-File -FilePath $outFile -Append -Encoding utf8
 }
 
+# NOTE: $PID is reserved (case-insensitive). Don't use $pid.
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
     [Security.Principal.WindowsBuiltInRole]::Administrator
 )
@@ -25,7 +26,7 @@ try {
     $netCfg = Get-NetIPConfiguration -ErrorAction Stop | Where-Object { $_.IPv4Address }
 } catch { $netCfg = @() }
 
-# ---------------- Listening Ports (single pass) ----------------
+# ---------------- Listening Ports ----------------
 $tcp = @()
 $udp = @()
 
@@ -49,15 +50,27 @@ Get-Process -ErrorAction SilentlyContinue | ForEach-Object {
     $procMap[[int]$_.Id] = $_.ProcessName
 }
 
-# ---------------- Service Map (PID -> service names) ----------------
+# ---------------- Service Map (ProcId -> service names) ----------------
 $svcByProcId = @{}
 Get-CimInstance Win32_Service -ErrorAction SilentlyContinue |
     Where-Object { $_.ProcessId -gt 0 } |
     ForEach-Object {
-        $procId = [int]$_.ProcessId
-        if (-not $svcByProcId.ContainsKey($procId)) { $svcByProcId[$procId] = @() }
-        $svcByProcId[$procId] += $_.Name
+        $p = [int]$_.ProcessId
+        if (-not $svcByProcId.ContainsKey($p)) { $svcByProcId[$p] = @() }
+        $svcByProcId[$p] += $_.Name
     }
+
+function Compress-List {
+    param(
+        [string[]]$Items,
+        [int]$Max = 5
+    )
+    if (-not $Items -or $Items.Count -eq 0) { return "" }
+    $u = $Items | Sort-Object -Unique
+    if ($u.Count -le $Max) { return ($u -join ",") }
+    $head = $u[0..($Max-1)] -join ","
+    return "$head, ... (+$($u.Count - $Max) more)"
+}
 
 # ---------------- Port Labels ----------------
 $portMap = @{
@@ -99,6 +112,7 @@ if ($netCfg -and $netCfg.Count -gt 0) {
 }
 Add ""
 
+# ---- Compact summaries ----
 Add "Listening Ports (Quick Summary):"
 if (-not $listen -or $listen.Count -eq 0) {
     Add "  (none)"
@@ -111,39 +125,53 @@ if (-not $listen -or $listen.Count -eq 0) {
 }
 Add ""
 
-$mapped   = $listen | Where-Object { $portMap.ContainsKey($_.Port) }
-$unmapped = $listen | Where-Object { -not $portMap.ContainsKey($_.Port) }
-
 Add "Required Ports (mapped):"
+$mapped = $listen | Where-Object { $portMap.ContainsKey($_.Port) } | Sort-Object Port,Proto -Unique
 if ($mapped) {
-    foreach ($m in ($mapped | Sort-Object Port,Proto -Unique)) {
-        Add ("  {0,5}/{1}  -> {2}" -f $m.Port, $m.Proto, $portMap[$m.Port])
-    }
+    foreach ($m in $mapped) { Add ("  {0,5}/{1}  -> {2}" -f $m.Port, $m.Proto, $portMap[$m.Port]) }
 } else { Add "  (none)" }
 Add ""
 
 Add "Other Listening Ports:"
+$unmapped = $listen | Where-Object { -not $portMap.ContainsKey($_.Port) } | Sort-Object Port,Proto -Unique
 if ($unmapped) {
-    foreach ($u in ($unmapped | Sort-Object Port,Proto -Unique)) {
-        Add ("  {0}/{1}" -f $u.Port, $u.Proto)
-    }
+    foreach ($u in $unmapped) { Add ("  {0}/{1}" -f $u.Port, $u.Proto) }
 } else { Add "  (none)" }
 Add ""
 
-Add "Evidence (Port -> ProcId -> Process -> Service):"
-foreach ($row in ($listen | Sort-Object Port,Proto,ProcId)) {
-    $procId = [int]$row.ProcId
-    $proc   = if ($procMap.ContainsKey($procId)) { $procMap[$procId] } else { "UNKNOWN" }
-    $svcs   = if ($svcByProcId.ContainsKey($procId)) { (($svcByProcId[$procId] | Sort-Object -Unique) -join ",") } else { "" }
+# ---- Evidence grouped by process (THIS fixes the “pages of mess”) ----
+Add "Evidence (grouped by process):"
+if (-not $listen -or $listen.Count -eq 0) {
+    Add "  (none)"
+} else {
+    $groups = $listen | Group-Object ProcId | Sort-Object { $_.Group.Count } -Descending
 
-    if ($svcs) {
-        Add ("  {0,5}/{1,-3}  ProcId:{2,-6}  Proc:{3,-18}  Svc:{4}" -f $row.Port, $row.Proto, $procId, $proc, $svcs)
-    } else {
-        Add ("  {0,5}/{1,-3}  ProcId:{2,-6}  Proc:{3}" -f $row.Port, $row.Proto, $procId, $proc)
+    foreach ($g in $groups) {
+        $procId = [int]$g.Name
+        $procName = if ($procMap.ContainsKey($procId)) { $procMap[$procId] } else { "UNKNOWN" }
+
+        # Build ports list like: 80/tcp, 443/tcp, 5353/udp
+        $ports = $g.Group |
+            Sort-Object Port,Proto |
+            ForEach-Object {
+                $lbl = if ($portMap.ContainsKey($_.Port)) { " ($($portMap[$_.Port]))" } else { "" }
+                "{0}/{1}{2}" -f $_.Port, $_.Proto, $lbl
+            }
+        $portsText = Compress-List -Items $ports -Max 12
+
+        $svcsText = ""
+        if ($svcByProcId.ContainsKey($procId)) {
+            $svcsText = Compress-List -Items $svcByProcId[$procId] -Max 6
+        }
+
+        Add ("  ProcId:{0}  Proc:{1}" -f $procId, $procName)
+        Add ("    Ports: {0}" -f $portsText)
+        if ($svcsText) { Add ("    Svcs:  {0}" -f $svcsText) }
+        Add ""
     }
 }
-Add ""
 
+# ---- Docker (kept readable) ----
 Add "Containers:"
 if (Get-Command docker -ErrorAction SilentlyContinue) {
     Add "  Docker detected:"
@@ -157,5 +185,4 @@ if (Get-Command docker -ErrorAction SilentlyContinue) {
 
 Add ""
 Add ("Saved to: {0}" -f $outFile)
-
 Write-Host "Saved: $outFile"
