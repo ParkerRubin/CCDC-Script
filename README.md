@@ -77,7 +77,7 @@ What to monitor after snapshot:
 
 --------------------------------------------------
 
-2) Inventory Script (Inventory.ps1)
+2) Inventory Script (systeminfo/wininfo.ps1, see systeminfo/wininfooverview.md)
 
 What it captures:
 - Host, OS, IPv4 network config
@@ -116,7 +116,7 @@ What to monitor after inventory:
 
 --------------------------------------------------
 
-3) Triage Script (triage_full.ps1)
+3) Triage Script (monitoring/triage_full.ps1, see monitoring/triage_fulloverview.md)
 
 What it captures:
 - SUMMARY.txt with quick-view sections
@@ -169,7 +169,7 @@ What to monitor after triage:
 
 --------------------------------------------------
 
-4) Tools - Sysinternals Installer
+4) Tools - Sysinternals Installer (tools/tools.ps1, see tools/tooloverview.md)
 
 What it installs (x64 only, direct from live.sysinternals.com):
 - procexp64.exe   - Process Explorer (parent/child trees, loaded
@@ -194,7 +194,7 @@ What it does NOT do:
 
 --------------------------------------------------
 
-5) Firewall Baseline Script (WRCCDC_Firewall_Baseline.ps1)
+5) Firewall Baseline Script (firewall/firewall.ps1, see firewall/firewalloverview.md)
 
 Goal:
 Reduce exposed attack surface without nuking scoring.
@@ -265,6 +265,14 @@ actually uses before adding it.
 Know your actual RDP/access source range before running the firewall
 script - usually your team's VPN-assigned subnet on the comp network,
 not a guessed private range.
+
+--------------------------------------------------
+
+Linux
+
+linux/linuxinfo.ps1 and linux/readme.md cover the Linux side of the
+toolkit separately - see that readme for details. This overview
+currently documents the Windows-side scripts only.
 
 --------------------------------------------------
 
