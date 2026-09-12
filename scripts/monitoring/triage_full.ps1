@@ -183,6 +183,20 @@ try {
   Write-ErrorFile -CaseDir $CaseDir -Name "process_pid_map" -Message $_.Exception.Message
 }
 
+# CPU-sorted view - surfaces runaway/heavy processes (e.g. miners, brute
+# forcers) that a PID-ordered list won't make obvious.
+try {
+  Get-Process -ErrorAction Stop |
+    Sort-Object CPU -Descending |
+    Select-Object -First 200 Name, Id, CPU,
+      @{Name="WorkingSetMB";Expression={[math]::Round($_.WorkingSet64/1MB,1)}},
+      Path |
+    Format-Table -AutoSize | Out-String -Width 260 |
+    Out-File (Join-Path $CaseDir "process_by_cpu.txt") -Encoding UTF8
+} catch {
+  Write-ErrorFile -CaseDir $CaseDir -Name "process_by_cpu" -Message $_.Exception.Message
+}
+
 $procLines = @()
 if (($susp | Measure-Object).Count -eq 0) {
   $procLines = @("None flagged by simple hint list.")
@@ -225,6 +239,21 @@ try {
   Write-ErrorFile -CaseDir $CaseDir -Name "event_security" -Message $_.Exception.Message
 }
 
+# Targeted Security event IDs - logon success/fail, account creation/
+# modification, admin group membership changes. Unlike the lookback-window
+# pull above, this isn't time-bounded, so it catches relevant events even
+# if they happened outside LookbackHours. Narrower signal, less noise than
+# scanning all Security events.
+try {
+  Get-WinEvent -FilterHashtable @{ LogName='Security'; Id=4624,4625,4720,4722,4723,4724,4725,4726,4732,4733 } -MaxEvents 200 -ErrorAction Stop |
+    Select-Object TimeCreated, Id, ProviderName, Message |
+    Format-List | Out-String |
+    Out-File (Join-Path $CaseDir "event_security_targeted.txt") -Encoding UTF8
+} catch {
+  # Same Security-log elevation caveat applies here as the lookback pull.
+  Write-ErrorFile -CaseDir $CaseDir -Name "event_security_targeted" -Message $_.Exception.Message
+}
+
 # --- Light automation: enabled local users ---
 $enabledUsers = @()
 try { $enabledUsers = $users | Where-Object {$_.Enabled -eq $true} } catch {}
@@ -263,6 +292,8 @@ if ($ContainmentMode) {
 
 Add-Content -Path $SummaryPath -Value ""
 Add-Content -Path $SummaryPath -Value "Done. Review SUMMARY.txt first, then dig into the dump files."
+Add-Content -Path $SummaryPath -Value "event_security_targeted.txt narrows to logon, account-change, and admin-group-membership event IDs - check it alongside the full event_security_lastXXh.txt dump."
+Add-Content -Path $SummaryPath -Value "process_by_cpu.txt sorts by CPU usage - check it for anything unexpectedly heavy (miners, brute-force loops)."
 Add-Content -Path $SummaryPath -Value "Any *_error.txt files in this folder indicate a section failed to collect - check those before assuming a quiet result means 'nothing found'."
 
 Write-Host "Triage complete."
