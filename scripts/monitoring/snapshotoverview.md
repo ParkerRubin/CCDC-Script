@@ -1,5 +1,4 @@
 Firewall + Network Snapshot Script User Guide
-
 --------------------------------------------------
 
 What this script does
@@ -16,6 +15,9 @@ It captures:
 - Running processes (with paths)
 - Scheduled tasks
 
+It also automatically prunes old snapshots so repeated runs (e.g. on
+a timer during a competition) don't fill the disk.
+
 Purpose: preserve a known-good network/security baseline or enable quick rollback.
 
 --------------------------------------------------
@@ -31,6 +33,11 @@ From the folder containing the script:
 Optional: choose a different root folder:
 
     .\Snapshot.ps1 -Root C:\IR\Snapshots
+
+Optional: change how many snapshots are kept before older ones are
+deleted (default is 20):
+
+    .\Snapshot.ps1 -MaxSnapshots 40
 
 If script execution is blocked:
 
@@ -65,9 +72,11 @@ All firewall rules in searchable CSV format.
 
 local_users.txt
 Local user accounts.
+(If this fails, a local_users_error.txt is written instead.)
 
 local_admins.txt
 Members of local Administrators group.
+(If this fails, a local_admins_error.txt is written instead.)
 
 services.csv
 Services with state, start mode, account, and binary path.
@@ -80,6 +89,21 @@ Running processes with PID and executable path.
 
 scheduled_tasks.csv
 Scheduled tasks with name, path, state, and author.
+
+--------------------------------------------------
+
+Snapshot retention
+
+Every run checks how many snapshot folders exist under the root
+directory. If there are more than MaxSnapshots (default 20), the
+oldest folders are deleted automatically, based on their timestamp
+name.
+
+This makes it safe to run on a recurring schedule (e.g. every
+15 minutes via Task Scheduler) without manually clearing old
+snapshots. If you want a longer history for a specific engagement,
+raise -MaxSnapshots when you run it, or move folders you want to
+keep permanently out of the root directory before they age out.
 
 --------------------------------------------------
 
@@ -96,6 +120,10 @@ Preserves firewall and exposure state for comparison.
 
 Before major network or service changes
 Example: enabling RDP, WinRM, or changing firewall profiles.
+
+On a recurring schedule
+With retention enabled, this script can run unattended on an
+interval to build a rolling history for later comparison.
 
 --------------------------------------------------
 
@@ -127,8 +155,10 @@ Notes
 Running without Administrator may reduce visibility.
 Firewall export may fail without elevation.
 
-Script does not change system configuration.
-It only reads settings and writes snapshot files.
+Script does not change existing system configuration other than
+managing its own snapshot folders (creating new ones and pruning
+old ones past the retention limit).
+It only reads security/network settings and writes snapshot files.
 
 --------------------------------------------------
 
