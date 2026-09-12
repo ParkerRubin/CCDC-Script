@@ -71,7 +71,7 @@ if ($ActiveProfilesOnly) {
 }
 
 $ts = Get-Date -Format "yyyyMMdd_HHmmss"
-$backupDir = "C:\Users\CCDC-Scripts\firewall"
+$backupDir = Join-Path $env:USERPROFILE "CCDC\firewall"
 if (!(Test-Path $backupDir)) { New-Item -ItemType Directory -Path $backupDir -Force | Out-Null }
 $backupPath = Join-Path $backupDir "fwbackup_$ts.wfw"
 Write-Host "[1/7] Exporting firewall policy to $backupPath"
