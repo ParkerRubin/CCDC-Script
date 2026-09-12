@@ -139,7 +139,7 @@ if ($unmapped) {
 } else { Add "  (none)" }
 Add ""
 
-# ---- Evidence grouped by process (THIS fixes the “pages of mess”) ----
+# ---- Evidence grouped by process ----
 Add "Evidence (grouped by process):"
 if (-not $listen -or $listen.Count -eq 0) {
     Add "  (none)"
@@ -150,7 +150,6 @@ if (-not $listen -or $listen.Count -eq 0) {
         $procId = [int]$g.Name
         $procName = if ($procMap.ContainsKey($procId)) { $procMap[$procId] } else { "UNKNOWN" }
 
-        # Build ports list like: 80/tcp, 443/tcp, 5353/udp
         $ports = $g.Group |
             Sort-Object Port,Proto |
             ForEach-Object {
@@ -171,7 +170,101 @@ if (-not $listen -or $listen.Count -eq 0) {
     }
 }
 
-# ---- Docker (kept readable) ----
+# ---- Firewall rules (cross-reference against what's actually listening) ----
+Add "Firewall Rules (enabled, inbound):"
+try {
+    Get-NetFirewallRule -Direction Inbound -Enabled True -ErrorAction Stop |
+        Select-Object DisplayName, Action, Profile |
+        Sort-Object DisplayName |
+        ForEach-Object { Add ("  {0}  Action:{1}  Profile:{2}" -f $_.DisplayName, $_.Action, $_.Profile) }
+} catch { Add "  (unable to query firewall rules)" }
+Add ""
+
+# ---- Local Administrators ----
+Add "Local Administrators Group Membership:"
+try {
+    Get-LocalGroupMember -Group "Administrators" -ErrorAction Stop |
+        ForEach-Object { Add ("  {0}  ({1})" -f $_.Name, $_.ObjectClass) }
+} catch { Add "  (unable to query - not all Windows editions support Get-LocalGroupMember)" }
+Add ""
+
+# ---- Non-Microsoft Scheduled Tasks ----
+Add "Non-Microsoft Scheduled Tasks:"
+try {
+    $tasks = Get-ScheduledTask -ErrorAction Stop | Where-Object { $_.TaskPath -notlike "\Microsoft\*" }
+    if ($tasks) {
+        foreach ($t in $tasks) {
+            Add ("  {0}  Path:{1}  State:{2}" -f $t.TaskName, $t.TaskPath, $t.State)
+        }
+    } else { Add "  (none found)" }
+} catch { Add "  (unable to query scheduled tasks)" }
+Add ""
+
+# ---- Startup / Run Key Persistence ----
+Add "Startup Registry Entries (Run/RunOnce):"
+$runKeys = @(
+    "HKLM:\Software\Microsoft\Windows\CurrentVersion\Run",
+    "HKLM:\Software\Microsoft\Windows\CurrentVersion\RunOnce",
+    "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run",
+    "HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce"
+)
+$foundAny = $false
+foreach ($k in $runKeys) {
+    try {
+        $props = Get-ItemProperty -Path $k -ErrorAction Stop
+        $names = $props.PSObject.Properties | Where-Object { $_.Name -notlike "PS*" }
+        foreach ($n in $names) {
+            $foundAny = $true
+            Add ("  [{0}] {1} = {2}" -f $k, $n.Name, $n.Value)
+        }
+    } catch { }
+}
+if (-not $foundAny) { Add "  (none found)" }
+Add ""
+
+# ---- Unsigned Executables Among Listening Processes ----
+Add "Unsigned/Invalid-Signature Executables (among listening processes):"
+$checkedPaths = @{}
+$foundUnsigned = $false
+foreach ($procId in ($listen | Select-Object -ExpandProperty ProcId -Unique)) {
+    try {
+        $path = (Get-Process -Id $procId -ErrorAction Stop).Path
+        if ($path -and -not $checkedPaths.ContainsKey($path)) {
+            $checkedPaths[$path] = $true
+            $sig = Get-AuthenticodeSignature -FilePath $path -ErrorAction SilentlyContinue
+            if ($sig.Status -ne "Valid") {
+                $foundUnsigned = $true
+                Add ("  ProcId:{0}  Path:{1}  SignatureStatus:{2}" -f $procId, $path, $sig.Status)
+            }
+        }
+    } catch { }
+}
+if (-not $foundUnsigned) { Add "  (none found - all checked binaries have valid signatures)" }
+Add ""
+
+# ---- Name Resolution Poisoning Surface (LLMNR / NetBIOS / mDNS) ----
+Add "Name Resolution Poisoning Surface:"
+try {
+    $llmnr = Get-ItemProperty -Path "HKLM:\Software\Policies\Microsoft\Windows NT\DNSClient" -Name "EnableMulticast" -ErrorAction Stop
+    Add ("  LLMNR Enabled (via policy): {0}" -f ($llmnr.EnableMulticast -ne 0))
+} catch {
+    Add "  LLMNR: no explicit policy set (default = enabled). Attack surface for Responder-style poisoning."
+}
+$mdnsListener = $listen | Where-Object { $_.Port -eq 5353 }
+if ($mdnsListener) {
+    Add "  mDNS (5353/udp): listening - discovery traffic reachable on this host"
+} else {
+    Add "  mDNS (5353/udp): not listening"
+}
+$ssdpListener = $listen | Where-Object { $_.Port -eq 1900 }
+if ($ssdpListener) {
+    Add "  SSDP/UPnP (1900/udp): listening - discovery traffic reachable on this host"
+} else {
+    Add "  SSDP/UPnP (1900/udp): not listening"
+}
+Add ""
+
+# ---- Docker ----
 Add "Containers:"
 if (Get-Command docker -ErrorAction SilentlyContinue) {
     Add "  Docker detected:"
