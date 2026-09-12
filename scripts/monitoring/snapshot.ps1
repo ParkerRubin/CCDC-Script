@@ -1,7 +1,7 @@
 # Firewall + Network Snapshot (CCDC-friendly)
 
 param(
-    [string]$Root = "C:\CCDC\Backups",
+    [string]$Root = (Join-Path $env:USERPROFILE "Desktop\CCDC\Snapshots"),
     [int]$MaxSnapshots = 20
 )
 
