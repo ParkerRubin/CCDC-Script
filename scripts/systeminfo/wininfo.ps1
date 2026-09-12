@@ -1,5 +1,5 @@
 param(
-    [string]$OutRoot = (Get-Location).Path
+    [string]$OutRoot = (Join-Path $env:USERPROFILE "Desktop\CCDC\Inventory")
 )
 
 $hostname  = $env:COMPUTERNAME
