@@ -1,7 +1,8 @@
 # Firewall + Network Snapshot (CCDC-friendly)
 
 param(
-    [string]$Root = "C:\CCDC\Backups"
+    [string]$Root = "C:\CCDC\Backups",
+    [int]$MaxSnapshots = 20
 )
 
 $ts   = Get-Date -Format "yyyyMMdd_HHmmss"
@@ -33,10 +34,19 @@ try {
 } catch { }
 
 # 3) Local users/admins (quick access checks)
-try { net user | Out-File (Join-Path $base "local_users.txt") -Encoding UTF8 -Force } catch { }
-try { net localgroup administrators | Out-File (Join-Path $base "local_admins.txt") -Encoding UTF8 -Force } catch { }
+try {
+    net user | Out-File (Join-Path $base "local_users.txt") -Encoding UTF8 -Force
+} catch {
+    "local_users export failed: $($_.Exception.Message)" | Out-File (Join-Path $base "local_users_error.txt") -Encoding UTF8 -Force
+}
 
-# 4) Services (useful for “what broke” + persistence checking)
+try {
+    net localgroup administrators | Out-File (Join-Path $base "local_admins.txt") -Encoding UTF8 -Force
+} catch {
+    "local_admins export failed: $($_.Exception.Message)" | Out-File (Join-Path $base "local_admins_error.txt") -Encoding UTF8 -Force
+}
+
+# 4) Services (useful for "what broke" + persistence checking)
 try {
     Get-CimInstance Win32_Service |
         Select-Object Name, DisplayName, State, StartMode, StartName, PathName |
@@ -62,6 +72,26 @@ try {
         Select-Object TaskName, TaskPath, State, Author |
         Export-Csv (Join-Path $base "scheduled_tasks.csv") -NoTypeInformation -Force
 } catch { }
+
+# 7) Retention cleanup - keep only the most recent $MaxSnapshots folders
+try {
+    $allSnapshots = Get-ChildItem -Path $Root -Directory -ErrorAction Stop |
+        Sort-Object Name -Descending
+
+    if ($allSnapshots.Count -gt $MaxSnapshots) {
+        $toRemove = $allSnapshots | Select-Object -Skip $MaxSnapshots
+        foreach ($old in $toRemove) {
+            try {
+                Remove-Item -Path $old.FullName -Recurse -Force -ErrorAction Stop
+                Write-Host "Pruned old snapshot: $($old.Name)"
+            } catch {
+                Write-Host "Failed to prune $($old.Name): $($_.Exception.Message)"
+            }
+        }
+    }
+} catch {
+    Write-Host "Retention cleanup skipped: $($_.Exception.Message)"
+}
 
 # Restore note (manual):
 # netsh advfirewall import "C:\CCDC\Backups\<timestamp>\firewall.wfw"
