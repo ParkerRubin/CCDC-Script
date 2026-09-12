@@ -1,7 +1,7 @@
-Firewallupgrade.ps1 includes a backup inside for ONLY firewall rules. This overview is for "firewallupgrade.ps1" NOT "firewall.ps1".
+FirewallUpgrade.ps1 includes a backup inside for ONLY firewall rules.
+This overview is for "FirewallUpgrade.ps1" NOT "firewall.ps1".
 
 WRCCDC Firewall Baseline Script Overview
-
 --------------------------------------------------
 
 What this script does
@@ -12,7 +12,8 @@ Applies a scoring-safe Windows Firewall baseline that:
 - Allows outbound traffic
 - Preserves existing allow rules (to avoid breaking scoring)
 - Allows only required service ports you specify
-- Optionally restricts RDP access
+- Prompts interactively for allowed RDP source IP(s)/CIDR range(s)
+- Optionally restricts RDP access to those sources
 - Enables firewall logging
 - Removes only prior WRCCDC_* rules
 - Creates a restore-ready firewall backup
@@ -31,7 +32,8 @@ Only inbound traffic allowed:
 
 - Existing Windows/service allow rules
 - Ports explicitly listed in AllowedInboundTCP/UDP
-- Optional RDP rule (restricted if configured)
+- RDP rule, restricted to the IP(s)/CIDR range(s) entered at runtime
+  (falls back to RFC1918 private ranges if left blank)
 
 This prevents:
 
@@ -39,6 +41,7 @@ This prevents:
 - Many lateral movement techniques
 - Remote exploitation of non-required services
 - Unauthorized inbound connections
+- RDP access from sources outside the range you specify at runtime
 
 --------------------------------------------------
 
@@ -56,7 +59,8 @@ This ensures:
 - Scoring agents still connect
 - Required services still reachable
 - Domain communications not broken
-- Team remote access not lost
+- Team remote access not lost (as long as the correct RDP source
+  range was entered when prompted)
 
 --------------------------------------------------
 
@@ -75,6 +79,30 @@ It does not stop or detect:
 - Living-off-the-land execution
 
 Firewall reduces entry points, not compromise state.
+
+--------------------------------------------------
+
+Before running: know these two things
+
+1) Required service port(s) and protocol(s)
+   - Fill into AllowedInboundTCP / AllowedInboundUDP
+   - TCP and UDP are separate port spaces: a service listening on
+     UDP/53 is NOT reached by an allow rule for TCP/53, and vice
+     versa. Confirm the actual protocol (netstat -ano on the running
+     service) before filling in the array — a wrong-protocol entry
+     creates a rule that does nothing and gives no error.
+
+2) Your team's actual RDP source range
+   - Usually your VPN-assigned subnet on the comp network, not your
+     home IP or a broad guess.
+   - Entered at runtime when the script prompts:
+         "RDP allowed sources"
+   - Accepts comma-separated IPs and/or CIDR ranges
+     (e.g. 10.0.5.10,192.168.1.0/24)
+   - Invalid entries are dropped and reported; leaving it blank
+     falls back to RFC1918 ranges (10.0.0.0/8, 172.16.0.0/12,
+     192.168.0.0/16) as a default, which is broader than a single
+     known-good range.
 
 --------------------------------------------------
 
@@ -104,13 +132,12 @@ After baseline deployment, check:
 
 4) Unexpected inbound allow rules
    Check:
-       firewall_rules.csv
-       or Get-NetFirewallRule
+       Get-NetFirewallRule
 
 5) Scoring stability
    If scoring drops:
-       add required port to AllowedInboundTCP
-       rerun script
+       add required port to AllowedInboundTCP or AllowedInboundUDP
+       rerun script (you will be re-prompted for RDP sources)
 
 --------------------------------------------------
 
@@ -122,6 +149,7 @@ When to use this script
 - Before opening services externally
 - When firewall state is unknown
 - When ports/services changed
+- When your team's RDP source range changes
 
 --------------------------------------------------
 
