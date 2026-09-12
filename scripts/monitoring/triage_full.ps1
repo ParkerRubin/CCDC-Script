@@ -1,7 +1,7 @@
 #triage_full.ps1
 
 param(
-  [string]$BaseDir = "C:\WRCCDC",
+  [string]$BaseDir = (Join-Path $env:USERPROFILE "Desktop\CCDC\Triage"),
   [int]$LookbackHours = 12,
   [switch]$ContainmentMode
 )
