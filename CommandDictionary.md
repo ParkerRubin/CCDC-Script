@@ -397,7 +397,6 @@ The full "why / what you'll see" writeups are in `PentestingNewbie.md`. The work
 ```bash
 sudo nmap -p- -T4 -v --open <IP> -oN open_ports.txt   # phase 1: find all open ports
 sudo nmap -sV -sC -p <port,port,etc> <IP> -Pn         # phase 2: versions + default scripts
-sudo nmap -sV --script=vuln,auth -p 22,8080 10.65.190.186 # Built in script for web vulnerabilities with CVE databases. 
 ```
 Anonymous FTP shows up in nmap as response code `230`.
 
@@ -412,6 +411,45 @@ Web form: the `F=` text must match the site's real "bad login" message exactly, 
 ```bash
 gobuster dir -u <URL> -w <wordlist.txt> -t 50 -x php,txt,html
 ```
+
+## Web recon & vuln scanning
+
+Gobuster still works (above), but ffuf + nuclei cover more of the workflow.
+
+**ffuf** (faster gobuster; `FUZZ` keyword goes anywhere: path, header, param, vhost):
+```bash
+ffuf -u http://<IP>:<port>/FUZZ -w <wordlist.txt>          # basic dir bust
+ffuf -u http://<IP>:<port>/FUZZ -w <wordlist.txt> \
+  -mc 200,301,302,401,403 -ac                              # match codes + auto-calibrate
+ffuf -u http://<IP>:<port>/FUZZ -w <wordlist.txt> -e .php,.txt,.html   # extensions
+ffuf -u http://<IP>:<port>/ -H "Host: FUZZ.<domain>" -w <subdomains.txt> # vhost fuzz
+```
+`-ac` filters the app's generic "not found" page. Flask/custom 404s return 200, which breaks
+normal filtering, so `-ac` is what keeps the output clean. Bigger list when common.txt is thin:
+`/usr/share/seclists/Discovery/Web-Content/directory-list-2.3-medium.txt`.
+
+**Nuclei** (template-driven vuln scanner, actively maintained, way less noise than NSE `vuln`):
+```bash
+nuclei -update && nuclei -ut                    # update engine + templates
+nuclei -u http://<IP>:<port>                    # full pass (includes tech + exposure)
+nuclei -u http://<IP>:<port> -s critical,high,medium   # skip info noise
+nuclei -u http://<IP>:<port> -tags exposure,config     # isolate leaks (.git, backups, configs)
+```
+Default run already does tech-detection and exposure templates, so one severity-filtered
+run is usually enough. Flags an exposed `.git/config` on its own. Read *why* it flagged
+something and verify by hand, don't just trust the match.
+
+**git-dump** (pull an exposed `.git/` and rebuild the source):
+```bash
+pipx install git-dumper                         # or: pip install git-dumper
+git-dumper http://<IP>:<port>/.git/ ./src       # dump repo into ./src
+cd src
+git log --oneline                               # commit history
+grep -ri "secret\|password\|api_key\|token" .   # sweep source for creds
+```
+An exposed `.git/` beats dir-busting: source hands you the routes directly instead of
+guessing them. Nmap flags it as `http-git`; ffuf shows `.git/HEAD`, `.git/config`, `.git/index`
+all returning 200.
 
 **FTP / SMB:**
 ```bash
