@@ -397,6 +397,7 @@ The full "why / what you'll see" writeups are in `PentestingNewbie.md`. The work
 ```bash
 sudo nmap -p- -T4 -v --open <IP> -oN open_ports.txt   # phase 1: find all open ports
 sudo nmap -sV -sC -p <port,port,etc> <IP> -Pn         # phase 2: versions + default scripts
+sudo nmap -sV --script=vuln,auth -p 22,8080 10.65.190.186 # Built in script for web vulnerabilities with CVE databases. 
 ```
 Anonymous FTP shows up in nmap as response code `230`.
 
