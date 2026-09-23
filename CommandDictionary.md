@@ -418,11 +418,14 @@ Gobuster still works (above), but ffuf + nuclei cover more of the workflow.
 
 **ffuf** (faster gobuster; `FUZZ` keyword goes anywhere: path, header, param, vhost):
 ```bash
-ffuf -u http://<IP>:<port>/FUZZ -w <wordlist.txt>          # basic dir bust
-ffuf -u http://<IP>:<port>/FUZZ -w <wordlist.txt> \
-  -mc 200,301,302,401,403 -ac                              # match codes + auto-calibrate
-ffuf -u http://<IP>:<port>/FUZZ -w <wordlist.txt> -e .php,.txt,.html   # extensions
-ffuf -u http://<IP>:<port>/ -H "Host: FUZZ.<domain>" -w <subdomains.txt> # vhost fuzz
+# main dir bust — match codes + auto-calibrate (use this by default)
+ffuf -u http://<IP>:<port>/FUZZ -w <wordlist.txt> -mc 200,301,302,401,403 -ac
+
+# add extensions when hunting files, not just dirs
+ffuf -u http://<IP>:<port>/FUZZ -w <wordlist.txt> -e .php,.txt,.html -mc 200,301,302,401,403 -ac
+
+# vhost fuzz — different job entirely (finds virtual hosts, not paths)
+ffuf -u http://<IP>:<port>/ -H "Host: FUZZ.<domain>" -w <subdomains.txt> -fs <size>
 ```
 `-ac` filters the app's generic "not found" page. Flask/custom 404s return 200, which breaks
 normal filtering, so `-ac` is what keeps the output clean. Bigger list when common.txt is thin:
@@ -430,10 +433,9 @@ normal filtering, so `-ac` is what keeps the output clean. Bigger list when comm
 
 **Nuclei** (template-driven vuln scanner, actively maintained, way less noise than NSE `vuln`):
 ```bash
-nuclei -update && nuclei -ut                    # update engine + templates
-nuclei -u http://<IP>:<port>                    # full pass (includes tech + exposure)
-nuclei -u http://<IP>:<port> -s critical,high,medium   # skip info noise
-nuclei -u http://<IP>:<port> -tags exposure,config     # isolate leaks (.git, backups, configs)
+nuclei -update && nuclei -ut                        # update engine + templates
+nuclei -u http://<IP>:<port>                        # full pass — tech, exposure, everything
+nuclei -u http://<IP>:<port> -tags exposure,config  # isolate leaks (.git, backups, configs)
 ```
 Default run already does tech-detection and exposure templates, so one severity-filtered
 run is usually enough. Flags an exposed `.git/config` on its own. Read *why* it flagged
