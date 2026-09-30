@@ -498,8 +498,6 @@ curl -s <url>                     # fetch quietly (no error codes)
 
 ```powershell
 netstat -ano                                 # ports + PIDs
-net user "User" /add                         # /delete /active:yes|no
-net localgroup Administrators "User" /add    # /delete
 Get-SmbShare                                 # all shares ($ = hidden share)
 Get-SmbShareAccess -Name <share>             # access rights
 (Get-ADDomain).NetBIOSName
@@ -527,6 +525,33 @@ Consoles: `dsa.msc` (AD), `sysdm.msc` (system properties), `dnsmgmt.msc` (DNS).
 
 ---
 
+## Users & Processes
+
+```powershell
+# Processes ---------------------------------------------------
+Get-CimInstance Win32_Process | Select ProcessId,ParentProcessId,Name,CommandLine
+# ^ full command line + parent PID: catches encoded payloads, download cradles,
+#   and a cmd/powershell spawned by a service (webshell). The one to keep.
+
+# Users / groups (swap group: Administrators, Users, Guests, "Remote Desktop Users")
+Get-LocalGroupMember Administrators          # high priv, check first
+Get-LocalGroupMember Users                   # low priv
+Get-LocalUser                                # full account roster + enabled state
+
+# Add / remove / lock down -----------------------------------
+Add-LocalGroupMember    -Group Administrators -Member <user>
+Remove-LocalGroupMember -Group Administrators -Member <user>
+Disable-LocalUser -Name <user>
+Set-LocalUser -Name <user> -Password (Read-Host -AsSecureString)   # kill persisted creds
+
+# cmd equivalents (same job)
+net user "User" /add                         # /delete  /active:yes|no
+net localgroup Administrators "User" /add    # /delete
+```
+Don't just remove a rogue admin, reset its password too or it walks back in with a persisted cred. Check who an account is before pulling it so you don't cut a scored service account or your own access.
+
+---
+
 ## Active Directory
 
 **AD backups live in** `\Windows\NTDS\` and `\Windows\SYSVOL`.
@@ -537,8 +562,25 @@ nxc smb <ip> -u <user> -p <pass> --sam               # dump (--lsa/--ntds/--dpap
 nxc ldap <ip> -u <user> -p '' --kerberoasting out.txt
 impacket-GetUserSPNs -request -dc-ip <ip> domain/user:pass
 impacket-secretsdump domain/user:pass@<ip> -just-dc
-hashcat -a 0 output.txt /usr/share/wordlists/rockyou.txt
+hashcat -m 13100 output.txt /usr/share/wordlists/rockyou.txt   # Kerberoast (TGS)
+hashcat -m 18200 output.txt /usr/share/wordlists/rockyou.txt   # AS-REP roast
 evil-winrm -i <ip> -u Administrator -H <NTLM_hash>    # pass-the-hash
+```
+Domain users & groups (domain-level version of the local checks above):
+```powershell
+Get-ADGroupMember "Domain Admins"            # crown jewels, check first
+Get-ADGroupMember "Enterprise Admins"
+Get-ADUser -Filter * -Properties whenCreated | Sort whenCreated | Select Name,whenCreated
+# ^ baseline at round start, diff later to spot attacker-created accounts
+
+# Lock down a domain account
+Set-ADAccountPassword -Identity <user> -Reset -NewPassword (Read-Host -AsSecureString)
+Disable-ADAccount -Identity <user>
+Remove-ADGroupMember "Domain Admins" -Members <user>
+
+# Blue-side hardening: find what red team will roast, before they do
+Get-ADUser -Filter {ServicePrincipalName -like "*"}     # kerberoastable
+Get-ADUser -Filter {DoesNotRequirePreAuth -eq $true}    # AS-REP roastable
 ```
 User admin:
 ```
@@ -547,7 +589,7 @@ New-ADUser
 NET USERS /DOMAIN > USERS.TXT
 NET LOCALGROUP > LGRP.TXT
 ```
-Notes: impacket is king for dumps. `sssd.service` is what joins Linux boxes to AD. Give each service its own bind/service account (`svc` = service).
+Notes: impacket is king for dumps. `sssd.service` is what joins Linux boxes to AD. Give each service its own bind/service account (`svc` = service). On a defended DC, rotating passwords is your strongest move, it kills every hash they already dumped, just spare the scored service accounts.
 
 ---
 
