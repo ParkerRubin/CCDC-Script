@@ -1,11 +1,11 @@
 param(
-  [switch]$ActiveProfilesOnly 
+  [switch]$ActiveProfilesOnly
 )
 
 # ================== EDIT THESE ==================
-$AllowedInboundTCP = @(21)   
-$AllowedInboundUDP = @()          
-$EnableRDP = $true                 
+# Ports are no longer hardcoded here - the script prompts for them at runtime.
+# Just run it and type the port numbers when asked.
+$EnableRDP = $true
 $RestrictRDP = $true
 $LogFolder = "$env:SystemRoot\System32\LogFiles\Firewall"
 
@@ -22,7 +22,33 @@ if (-not $isAdmin) {
   exit 1
 }
 
+# ---- Interactive port prompt ----
+# Returns a sorted, de-duped int[] of valid ports (1-65535). Blank = none.
+function Read-PortList {
+  param([string]$Label)
+  Write-Host ""
+  Write-Host "Enter inbound $Label ports to allow, comma-separated (blank = none)." -ForegroundColor Cyan
+  Write-Host "Examples: 80,443   or   3389" -ForegroundColor DarkGray
+  $raw = Read-Host "$Label ports"
+  if ([string]::IsNullOrWhiteSpace($raw)) { return @() }
+  $ports = @()
+  foreach ($tok in ($raw -split "," | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" })) {
+    if ($tok -match '^\d{1,5}$' -and [int]$tok -ge 1 -and [int]$tok -le 65535) {
+      $ports += [int]$tok
+    } else {
+      Write-Host "Ignoring invalid port: $tok" -ForegroundColor Red
+    }
+  }
+  return ($ports | Sort-Object -Unique)
+}
+
 Write-Host "=== WRCCDC Firewall Baseline ===" -ForegroundColor Cyan
+
+$AllowedInboundTCP = Read-PortList -Label "TCP"
+$AllowedInboundUDP = Read-PortList -Label "UDP"
+Write-Host ""
+Write-Host "TCP allowed: $($AllowedInboundTCP -join ', ')" -ForegroundColor Green
+Write-Host "UDP allowed: $($AllowedInboundUDP -join ', ')" -ForegroundColor Green
 
 # ---- Interactive RDP source prompt ----
 $RdpAllowedRemoteAddresses = @()
@@ -154,7 +180,7 @@ if ($EnableRDP) {
   }
 } else {
   Write-Host "[6/7] RDP not allowed: blocking TCP/3389 (firewall only)"
-  
+
   try {
     New-NetFirewallRule `
       -DisplayName "WRCCDC_Block_RDP_3389" `
@@ -183,4 +209,4 @@ try {
 
 Write-Host ""
 Write-Host "Backup saved at: $backupPath" -ForegroundColor Yellow
-Write-Host "Tip: If scoring breaks, add the needed port to AllowedInboundTCP and rerun." -ForegroundColor Yellow
+Write-Host "Tip: If scoring breaks, rerun and add the needed port at the TCP/UDP prompt." -ForegroundColor Yellow
