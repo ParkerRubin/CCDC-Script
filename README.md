@@ -1,4 +1,4 @@
-CCDC-Script Toolkit Overview (WRCCDC)
+﻿CCDC-Script Toolkit Overview (WRCCDC)
 --------------------------------------------------
 
 Purpose
@@ -270,7 +270,7 @@ not a guessed private range.
 
 Linux
 
-linux/linuxinfo.ps1 and linux/readme.md cover the Linux side of the
+linux/linuxinfo.sh and linux/readme.md cover the Linux side of the
 toolkit separately - see that readme for details. This overview
 currently documents the Windows-side scripts only.
 
